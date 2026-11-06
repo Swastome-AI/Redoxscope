@@ -49,11 +49,19 @@ You also need:
 | **4 · Docking Comparison** | Best-pocket ranking, scores per cavity, volume vs score, score spread, contact amino acids, and pocket overlap between ligands on the same protein. |
 | **5 · Antioxidant → Pro-oxidant** | Defence (nrf2/ARE) vs stress (MMP, p53, cytotoxicity) map and net redox balance with an adjustable threshold. |
 | **6 · Apoptosis Prediction** | Apoptosis Likelihood Score (adjustable weights), contribution chart, radar plot, link to docking strength. |
-| **7 · Export Report** | Overall summary, key findings, write-up template, and a **ZIP** with all tables, converted PDF tables, original files, an interactive HTML report and a README. |
+| **7 · Export Report** | Overall summary, key findings, write-up template, a **PDF report** named after you, a ZIP of **publication-quality figures**, and a **ZIP** with all tables, converted PDF tables, original files, an interactive HTML report and a README. |
 
 Every tab shows the same file-stats bar, a "What is happening" block, a "How to read these results" block, Plotly charts (with toolbar and PNG download) and CSV downloads for each table.
 
 ---
+
+## Reports, plots and publication use
+
+- Type **your name** in the box at the top of the app. It is printed on the PDF report and used in the file name (`RedoxScope_Report_<Name>.pdf`).
+- The app is **light mode only**: white plots, black text, large fonts and grid lines on every plot.
+- Every plot has a **Download this plot (publication quality)** button: PNG or TIFF at 300 dpi (3000 px wide), or vector SVG / PDF. The camera icon in the plot toolbar also saves a 300 dpi PNG. Tab 7 can download all plots at once.
+- Plot colours are colour-blind safe (Okabe-Ito palette).
+- Image and PDF export need the `kaleido` package (included in `requirements.txt`).
 
 ## Run locally
 
@@ -68,16 +76,19 @@ Python 3.9+ is recommended. Online ID checks need an internet connection; withou
 
 ## Deploy on Streamlit Community Cloud
 
-1. Push `app.py`, `rs_helpers.py`, `requirements.txt` and `README.md` to a GitHub repository.
+1. Push `app.py`, `rs_helpers.py`, `rs_export.py`, `requirements.txt`, `packages.txt`, `.streamlit/config.toml` and `README.md` to a GitHub repository.
 2. Go to [share.streamlit.io](https://share.streamlit.io), choose **New app**, select the repository, and set the main file to `app.py`.
 3. Click **Deploy**.
 
 ## Project files
 
 ```
-app.py            Streamlit interface and all 7 tabs
-rs_helpers.py     File parsing, format checks, ID checks, simple scoring (no Streamlit code)
-requirements.txt  Python dependencies
+app.py                  Streamlit interface and all 7 tabs
+rs_helpers.py           File parsing, format checks, ID checks, simple scoring (no Streamlit code)
+rs_export.py            Plot styling, publication figure export, PDF report (no Streamlit code)
+requirements.txt        Python dependencies
+packages.txt            System font package for Streamlit Community Cloud (PDF symbols)
+.streamlit/config.toml  Light theme
 ```
 
 ---
@@ -115,6 +126,11 @@ PDF conversion can occasionally misread a row. In Tab 1, open the expander for e
 ## Credits
 
 ProTox-3 and CB-Dock2 are external tools by their respective authors. Please cite them in any report that uses their results.
+
+## About
+
+RedoxScope is actively maintained and developed by Swastome-AI under Swastome Private Limited.
+© 2026 Swastome Private Limited. All rights reserved. Swastome and the Swastome logo are the property of Swastome Private Limited. No part of this app may be copied, modified or distributed without written permission. Email to management@swastome.com for collaboration and licensing enquiries.
 
 ## License
 

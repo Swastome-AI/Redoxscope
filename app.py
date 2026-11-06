@@ -3,6 +3,8 @@ RedoxScope - Polyphenol Toxicity, Docking & Apoptosis Explorer
 Run with:  streamlit run app.py
 """
 import datetime
+import hashlib
+import html
 import io
 import zipfile
 
@@ -13,6 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import rs_helpers as H
+import rs_export as X
 
 APP_NAME = "RedoxScope"
 APP_TAG = "Polyphenol Toxicity, Docking & Apoptosis Explorer"
@@ -31,18 +34,28 @@ ss.setdefault("submitted", False)
 ss.setdefault("flash", None)
 ss.setdefault("last_checks", None)
 ss.setdefault("uid", 0)
+ss.setdefault("user_name", "")
 
 # Bigger, easier-to-read tab names
 st.markdown("""
 <style>
 button[data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600 !important; }
 button[data-baseweb="tab"] { padding: 0.6rem 1rem !important; }
+/* Light mode only, black text */
+:root { color-scheme: light only; }
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stMain"] {
+    background-color: #FFFFFF !important; color: #000000 !important; }
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp p, .stApp li, .stApp label,
+.stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricLabel"],
+.stApp [data-testid="stCaptionContainer"] { color: #000000 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 FIGS, TABLES = {}, {}  # collected during one run, used by the export tab
+# Camera button in the plot toolbar: 3000 x 2100 px PNG (= 300 dpi at 10 x 7 in), fixed size so fonts stay the same
 PCONFIG = {"displaylogo": False,
-           "toImageButtonOptions": {"format": "png", "scale": 3, "filename": "redoxscope_plot"}}
+           "toImageButtonOptions": {"format": "png", "scale": 3, "width": X.PUB_W, "height": X.PUB_H,
+                                    "filename": "redoxscope_plot"}}
 ICON = {"ok": "✅", "warn": "🟡", "error": "❌"}
 
 
@@ -58,9 +71,26 @@ def stretch(fn, *a, **k):
 
 
 def plot(fig, name):
-    fig.update_layout(template="plotly_white", margin=dict(t=60, b=40, l=40, r=20))
+    X.style_fig(fig)  # white background, black text, big fonts, grid lines
     FIGS[name] = fig
     stretch(st.plotly_chart, fig, config=PCONFIG, key=f"plt_{name}")
+    with st.popover("⬇️ Download this plot (publication quality)"):
+        label = st.radio("File format", list(X.FORMATS), key=f"fmt_{name}")
+        fmt, mime = X.FORMATS[label]
+        sig = hashlib.md5(fig.to_json().encode()).hexdigest()
+        if st.button("Prepare file", key=f"prep_{name}"):
+            with st.spinner("Rendering…"):
+                try:
+                    ss[f"dl_{name}"] = (fmt, sig, X.fig_bytes(fig, fmt))
+                except Exception as e:  # noqa
+                    ss[f"dl_{name}"] = None
+                    st.error("Could not render this file. Check that the 'kaleido' package is installed "
+                             f"(pip install kaleido==0.2.1). Details: {e}")
+        got = ss.get(f"dl_{name}")
+        if got and got[0] == fmt and got[1] == sig:
+            st.download_button(f"Download .{fmt}", got[2], file_name=f"RedoxScope_{name}.{fmt}",
+                               mime=mime, key=f"dlb_{name}_{fmt}", type="primary")
+        st.caption("PNG/TIFF: 3000 px wide (300 dpi at 10 in). SVG/PDF: vector, scales to any size.")
 
 
 def show_table(df, name, caption=None):
@@ -177,6 +207,9 @@ def file_stats():
 # ----------------------------------------------------------------------------
 st.title(f"🧪 {APP_NAME}")
 st.caption(f"**{APP_TAG}** · In-silico study: from antioxidant to pro-oxidant, and apoptosis prediction")
+
+st.text_input("👤 Your name (printed on the PDF report and used in its file name)", key="user_name",
+              placeholder="e.g. Aisha Khan")
 
 tabs = st.tabs(["1 · Upload & Check", "2 · Toxicity Comparison", "3 · Human Toxicity & Pathways",
                 "4 · Docking Comparison", "5 · Antioxidant → Pro-oxidant", "6 · Apoptosis Prediction",
@@ -505,7 +538,7 @@ def tab_toxicity(D):
     # Heatmap of toxicity endpoints
     hm = sc[H.TOX_ENDPOINTS].copy()
     hm.columns = [H.NICE_NAMES[c] for c in hm.columns]
-    fig = px.imshow(hm, text_auto=".2f", color_continuous_scale="Reds", zmin=0, zmax=1, aspect="auto",
+    fig = px.imshow(hm, text_auto=".2f", color_continuous_scale=X.SCALE_REDS, zmin=0, zmax=1, aspect="auto",
                     title="Toxicity endpoints heatmap: P(Active)", labels=dict(color="P(Active)"))
     plot(fig, "tox_heatmap")
 
@@ -532,7 +565,7 @@ def tab_toxicity(D):
         info["Toxicity class"] = info["Toxicity class"].astype("Int64").astype(str)
         fig = px.bar(info, x="Ligand", y="LD50 (mg/kg)", color="Toxicity class", text="LD50 (mg/kg)",
                      title="Predicted oral LD50 (higher = less acutely toxic)",
-                     color_discrete_sequence=px.colors.sequential.Viridis)
+                     color_discrete_sequence=X.COLORWAY)
         plot(fig, "tox_ld50")
 
     # Lipinski
@@ -573,7 +606,7 @@ def tab_pathways(D):
         show_table(T, "toxicity_targets_pathways", "Possible toxicity targets and affected pathways")
 
         sim = T.pivot_table(index="Toxicity Target", columns="Ligand", values="Avg Similarity Known Ligands")
-        fig = px.imshow(sim, text_auto=".1f", color_continuous_scale="Oranges", aspect="auto", zmin=0, zmax=100,
+        fig = px.imshow(sim, text_auto=".1f", color_continuous_scale=X.SCALE_ORANGES, aspect="auto", zmin=0, zmax=100,
                         title="Similarity to known ligands (%) per toxicity target", labels=dict(color="%"))
         plot(fig, "path_similarity_heatmap")
 
@@ -617,7 +650,7 @@ def tab_pathways(D):
 
     if D["best"]["Protein"].nunique() >= 1:
         hm = D["best"].pivot_table(index="Ligand", columns="Protein", values="score", aggfunc="min")
-        fig = px.imshow(hm, text_auto=".1f", color_continuous_scale="Blues_r", aspect="auto",
+        fig = px.imshow(hm, text_auto=".1f", color_continuous_scale=X.SCALE_BLUES_REV, aspect="auto",
                         title="Best docking score: ligands × proteins (more negative = stronger)")
         plot(fig, "path_ligand_protein_heatmap")
 
@@ -855,7 +888,8 @@ def build_report_html(findings, A, R):
              "<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>"
              "<style>body{font-family:Arial;max-width:1000px;margin:auto;padding:20px}"
              "table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}</style></head><body>",
-             f"<h1>{APP_NAME} report</h1><p>{APP_TAG}<br>Generated {datetime.datetime.now():%Y-%m-%d %H:%M}</p>",
+             f"<h1>{APP_NAME} report</h1><p>{APP_TAG}<br>Prepared by: {html.escape(ss.user_name.strip() or '-')}"
+             f"<br>Generated {datetime.datetime.now():%Y-%m-%d %H:%M}</p>",
              "<h2>Key findings</h2><ul>" + "".join(f"<li>{f}</li>" for f in findings) + "</ul>"]
     for name, df in TABLES.items():
         parts.append(f"<h3>{name.replace('_', ' ')}</h3>" + df.to_html(index=False, border=0))
@@ -912,6 +946,63 @@ def tab_export(D, A, R):
 4. *Limits:* computer predictions, no dose, no real cells. Say what you would test in the lab next.
 """)
 
+    # ---- PDF report
+    st.subheader("📄 PDF report")
+    uname = ss.user_name.strip()
+    if not uname:
+        st.warning("✍️ Please type your name in the **“Your name”** box at the top of the page. "
+                   "It is printed on the PDF report and used in the file name.")
+    else:
+        if st.button(f"📄 Create PDF report for {uname}", type="primary", key="gen_pdf"):
+            with st.spinner("Building the PDF (drawing every plot; this can take about a minute)…"):
+                imgs, notes = [], []
+                try:
+                    for nm, f in FIGS.items():
+                        imgs.append((X.plain_title(f) or nm.replace("_", " "), X.fig_bytes(f, "png", scale=2)))
+                except Exception as e:  # noqa
+                    notes.append("Some plots could not be drawn into the PDF because image export failed "
+                                 f"(is the 'kaleido' package installed?): {e}. Tables and findings are included.")
+                try:
+                    pdf = X.build_pdf(
+                        uname, APP_NAME, APP_TAG, findings,
+                        [("Ligands", n_lig), ("Proteins", n_prot), ("Ligand–protein pairs", len(ss.pairs)),
+                         ("Docking results (cavities)", len(dock)), ("Plots", len(imgs)), ("Tables", len(TABLES))],
+                        TABLES, imgs, notes)
+                    ss.pdf = (uname, pdf, datetime.datetime.now().strftime("%H:%M:%S"))
+                except Exception as e:  # noqa
+                    ss.pdf = None
+                    st.error(f"Could not build the PDF: {e}")
+                for n in notes:
+                    st.warning(n)
+        got = ss.get("pdf")
+        if got and got[0] == uname:
+            st.download_button("⬇️ Download PDF report", got[1], key="dl_pdf", type="primary",
+                               file_name=f"RedoxScope_Report_{X.safe_name(uname)}.pdf", mime="application/pdf")
+            st.caption(f"Report for **{uname}** created at {got[2]}. Press the button again after changing any settings.")
+
+    # ---- Publication figures (all plots)
+    st.subheader("🖼️ Publication-quality figures")
+    st.markdown("Each plot has its own **Download this plot** button, and the camera icon in its toolbar saves a "
+                "300 dpi PNG. To get **all** plots at once, choose the formats and prepare a ZIP.")
+    pick = st.multiselect("Formats", list(X.FORMATS), default=list(X.FORMATS)[:1] + list(X.FORMATS)[2:3], key="pack_fmts")
+    if pick and st.button("Prepare all figures (.zip)", key="prep_pack"):
+        with st.spinner("Rendering all plots…"):
+            try:
+                zb = io.BytesIO()
+                with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for i, (nm, f) in enumerate(FIGS.items(), 1):
+                        for lab in pick:
+                            fm = X.FORMATS[lab][0]
+                            zf.writestr(f"figures_{fm}/{i:02d}_{nm}.{fm}", X.fig_bytes(f, fm))
+                ss.figpack = (tuple(pick), zb.getvalue())
+            except Exception as e:  # noqa
+                ss.figpack = None
+                st.error(f"Could not render the figures. Is 'kaleido' installed (pip install kaleido==0.2.1)? Details: {e}")
+    fp = ss.get("figpack")
+    if fp and fp[0] == tuple(pick):
+        st.download_button("⬇️ Download all figures (.zip)", fp[1], file_name="RedoxScope_figures.zip",
+                           mime="application/zip", key="dl_pack")
+
     # ZIP
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -928,7 +1019,7 @@ def tab_export(D, A, R):
             z.writestr(f"original_files/{H.safe_filename(p['ligand'])}__{H.safe_filename(p['protein'])}/{p['dock_name']}", p["dock_raw"])
         z.writestr("report/RedoxScope_report.html", build_report_html(findings, A, R))
         z.writestr("README.txt",
-                   f"{APP_NAME} - {APP_TAG}\nGenerated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n\n"
+                   f"{APP_NAME} - {APP_TAG}\nPrepared by: {ss.user_name.strip() or '-'}\nGenerated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n\n"
                    + "\n".join("- " + f.replace("<b>", "").replace("</b>", "") for f in findings)
                    + f"\n\nSources: ProTox-3 ({PROTOX_URL}) and CB-Dock2 ({CBDOCK_URL}).\n"
                      "All results are computer predictions, not laboratory evidence.\n")
@@ -977,3 +1068,9 @@ with tabs[6]:
 
 st.divider()
 st.caption(f"{APP_NAME} · for learning and hypothesis building only · ProTox-3 and CB-Dock2 are external tools by their respective authors.")
+
+_mail = '<a href="mailto:management@swastome.com" style="color:#000000">management@swastome.com</a>'
+st.markdown(
+    "<div style='text-align:center;color:#000000;font-size:0.9rem;line-height:1.6;margin-top:0.4rem;padding-bottom:1rem'>"
+    f"<b>{X.FOOTER_1}</b><br>{X.FOOTER_2.replace('management@swastome.com', _mail)}</div>",
+    unsafe_allow_html=True)
