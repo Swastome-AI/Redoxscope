@@ -1,6 +1,6 @@
 # 🧪 RedoxScope
 
-**Polyphenol Toxicity, Docking & Apoptosis Explorer**
+**Polyphenol Toxicity, Docking & Apoptosis Explorer**: https://redoxscope.streamlit.app/
 
 RedoxScope is a beginner-friendly [Streamlit](https://streamlit.io) app that compares several polyphenols (plant compounds such as genistein or daidzein) using the output of two free web tools:
 
